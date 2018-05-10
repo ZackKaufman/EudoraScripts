@@ -8,6 +8,7 @@ from netCDF4 import Dataset as dt, num2date
 import xarray as xr
 from statsmodels.tsa.stattools import grangercausalitytests as granger
 from statsmodels.tsa.seasonal import seasonal_decompose as deseasonalize
+import statsmodels.tsa.api as sm
 import scipy
 
 ############################################################
@@ -34,6 +35,7 @@ FSNS = FSNS_file.variables['FSNS'][333:3983,0:96,:]
 # plot three years worth of data at random grid point
 # and check for seasonal trend
 # must export figure to local machine to view, plt.show() invalid on ssh server
+
 plt.plot(ICEFRAC[:,27,100], 'b')
 plt.plot(FSNS[:,27,100], 'r')
 os.chdir('../draftfigures')
@@ -115,20 +117,11 @@ plt.close()
 
 ###########################################################
 
-# function: smooth data to remove high-frequency noise, only works for 1d data for now
-def smooth(y,window_len=11,window='hanning'):
-    for x in np.nditer(y, flags=['external_loop']):
-        s=np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
-        if window == 'flat':
-            w=np.ones(window_len,'d')
-        else:
-            w=eval('numpy.'+window+'(window_len)')
-            x=np.convolve(w/w.sum(),s,mode='valid')
-        return y
-
-# smooth data in 5-day chunks
-ICEFRAC_smooth_detrend_DJF = scipy.signal.savgol_filter(ICEFRAC_detrend_DJF,window_length=25,polyorder=2,axis=0)
-FSNS_smooth_detrend_DJF = scipy.signal.savgol_filter(FSNS_detrend_DJF,window_length=25,polyorder=2,axis=0)
+# smooth data in 25-day chunks (review this later)
+ICEFRAC_smooth_detrend_DJF = scipy.signal.savgol_filter(ICEFRAC_detrend_DJF, \
+window_length=5,polyorder=2,axis=0)
+FSNS_smooth_detrend_DJF = scipy.signal.savgol_filter(FSNS_detrend_DJF,\
+window_length=5,polyorder=2,axis=0)
 
 
 # plot data
@@ -144,10 +137,20 @@ def normalize(data):
     data = ((data - np.mean(data))/np.std(data))
     return data
 
-ICEFRAC_norm_detrend_DJF = normalize(ICEFRAC_detrend_DJF)
-FSNS_norm_detrend_DJF = normalize(FSNS_detrend_DJF)
+ICEFRAC_norm_smooth_detrend_DJF = normalize(ICEFRAC_smooth_detrend_DJF)
+FSNS_norm_smooth_detrend_DJF = normalize(FSNS_smooth_detrend_DJF)
 
-plt.plot(ICEFRAC_norm_detrend_DJF[:,27,100], 'b')
-plt.plot(FSNS_norm_detrend_DJF[:,27,100], 'r')
+plt.plot(ICEFRAC_norm_smooth_detrend_DJF[:,27,100], 'b')
+plt.plot(FSNS_norm_smooth_detrend_DJF[:,27,100], 'r')
 plt.savefig('9yr_normdetrendDJF_may7.png')
 plt.close()
+###########################################################
+
+grangerICE = ICEFRAC_norm_smooth_detrend_DJF[:,27,100]
+grangerFSNS = FSNS_norm_smooth_detrend_DJF[:,27,100]
+
+dataset = [grangerICE,grangerFSNS]
+dataset = np.array(dataset)
+dataset = dataset.T
+VARmodel = sm.VAR(dataset)
+results = VARresults.VARmodel 
