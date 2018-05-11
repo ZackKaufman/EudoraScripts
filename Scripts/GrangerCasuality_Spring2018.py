@@ -4,10 +4,9 @@ import matplotlib
 import os
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib import colors as c
 from netCDF4 import Dataset as dt, num2date
-import xarray as xr
-from statsmodels.tsa.stattools import grangercausalitytests as granger
-from statsmodels.tsa.seasonal import seasonal_decompose as deseasonalize
+from mpl_toolkits.basemap import Basemap, cm, shiftgrid
 import statsmodels.tsa.api as sm
 import scipy
 
@@ -30,6 +29,10 @@ yearcount = len(time)/365
 
 FSNS_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.FSNS.04020101-04991231.nc')
 FSNS = FSNS_file.variables['FSNS'][333:3983,0:96,:]
+
+# import LAT and LON data from one variable for map generation
+lons = ICEFRAC_file.variables['lon'][:]
+lats = ICEFRAC_file.variables['lat'][:]
 ###########################################################
 
 # plot three years worth of data at random grid point
@@ -107,6 +110,7 @@ plt.close()
 ###########################################################
 # normalize data into anomalies
 # function: subtract functions mean and divide by standard deviation:
+
 def normalize(data):
     data = ((data - np.mean(data))/np.std(data))
     return data
@@ -119,7 +123,7 @@ plt.plot(FSNS_norm_smooth_detrend_DJF[:,27,100], 'r')
 plt.savefig('9yr_normdetrendDJF_may7.png')
 plt.close()
 ###########################################################
-# conduct granger causality test
+# conduct granger causality test, main implementation
 
 # function: create VARmodel, input is 2d array of shape (n_obs,n_var)
 
@@ -128,8 +132,8 @@ def VARmodel(dataset):
     VARmodel_fit = VARmodel.fit(ic='aic',trend='c')
     return VARmodel_fit
 
-# function: conduct causality test, returns binary depending on
-# rejection or failed rejection of null-hyp
+# function: conduct causality test for one model, returns binary depending on
+# rejection or failed rejection of null-hypothesis
 
 def grangertest(model,predictand,predictor):
     test = model.test_causality(str(predictand),str(predictor),verbose=False)
@@ -140,75 +144,67 @@ def grangertest(model,predictand,predictor):
         x = x+2
     return x
 
-ICEFRAC_in = ICEFRAC_norm_smooth_detrend_DJF
-FSNS_in = FSNS_norm_smooth_detrend_DJF
+# shorten the names of the input variables. values remain unchanged.
+ICEFRAC_in = ICEFRAC_norm_smooth_detrend_DJF[:,0:30,0:5]
+FSNS_in = FSNS_norm_smooth_detrend_DJF[:,0:30,0:5]
 
+# initialize 2d lat/lon array with values = 0 and dim_lengths = input variable
+# values will be updated by granger causality tests
 grangergrid = ICEFRAC_in*0
 grangergrid = np.mean(grangergrid,axis=0)
 
+# create VAR model and conduct granger test at each lat/lon grid point.
+# fill grangergrid with granger results binary. All values should = 1(T) or 2(F)
+# edit 2nd to last line in loop to change vars being considered for causality
 for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
     y1 = ICEFRAC_in[:,i,j]
     y2 = FSNS_in[:,i,j]
-    # the followinng process adds small amounts of random noise
-    # this eliminates the singular matrix problem
+    # the following calculation line adds small amounts of random noise
+    # this eliminates the singular matrix problem when ICEFRAC is nonexistent
     dataset = [y1,y2]+.00000001*np.random.rand(2,810)
     dataset = np.array(dataset)
     dataset = dataset.T
     ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
     result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
-    grangergrid[i,j] = result[i,j]
-    print i,j,grangergrid.shape
-    if i > 1:
-        break
-    finalgrid = grangergrid
-    return finalgrid
-    print grangergrid.shape
-    print grangergrid[27,100]
-    print grangergrid[:,105]
-    print grangergrid[:,155]
+    grangergrid[i,j] = result
+
+###########################################################
+# plot granger grid on map
+
+# trim lons/lats to = grangergrid dimensions
+lons = lons[0:5]
+lats = lats[0:30]
 
 
+fig = plt.figure(figsize=[12,15])  # a new figure window
+ax = fig.add_subplot(1, 1, 1)  # specify (nrows, ncols, axnum)
+ax.set_title('Net incoming SR -> ICEFRAC?', fontsize=14)
 
+map = Basemap(projection='cyl',llcrnrlat=-90,urcrnrlat=-40,\
+                llcrnrlon=-180,urcrnrlon=180,resolution='c', ax=ax)
 
+map.drawcoastlines()
+map.fillcontinents(color='#ffe2ab')
+# draw parallels and meridians.
+map.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
+map.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
 
-i = 0
-j = 0
-for i,j in zip(np.ndindex(ICEFRAC_in.shape[1:]),np.ndindex(FSNS_in.shape[1:])):
-    dataset = [ICEFRAC_in[:,i,j],FSNS_in[:,i,j]]
-    dataset = np.array(dataset)
-    print dataset.shape
-    y1 = ICEFRAC_in[:,i,j]
-    y2 = FSNS_in[:,i,j]
-    print y1.shape
-    dataset = [y1,y2]
-    dataset = np.array(dataset)
-    dataset = dataset.T
-    print dataset.shape
+# shift data so lons go from -180 to 180 instead of 0 to 360.
+grangergrid,lons = shiftgrid(180.,sic,lons,start=False)
+llons, llats = np.meshgrid(lons, lats)
+x,y = map(llons,llats)
+# make a color map of fixed colors
+cmap = c.ListedColormap(['#00004c','#000080','#0000b3','#0000e6','#0026ff','#004cff',
+                             '#0073ff','#0099ff','#00c0ff','#00d900','#33f3ff','#73ffff','#c0ffff',
+                             (0,0,0,0),
+                             '#ffff00','#ffe600','#ffcc00','#ffb300','#ff9900','#ff8000','#ff6600',
+                             '#ff4c00','#ff2600','#e60000','#b30000','#800000','#4c0000'])
+bounds=[0,1,2]
+norm = c.BoundaryNorm(bounds, ncolors=cmap.N) # cmap.N gives the number of colors of your palette
 
+cs = map.contourf(x,y,grangergrid, cmap=cmap, norm=norm, levels=bounds,shading='interp')
 
-    for k,l in np.ndindex(FSNS_in.shape[1:]):
-        y2 = FSNS_in.shape[:,k,l]
-        print y2
-        dataset = [y1,y2]
-        dataset = np.array(dataset)
-        dataset = dataset.T
-        ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
-        result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
-
-
-
-
-    x = a[:,i,j]
-    print x.shape
-
-
-
-grangerICE = ICEFRAC_norm_smooth_detrend_DJF[:,27,100]
-grangerFSNS = FSNS_norm_smooth_detrend_DJF[:,27,100]
-dataset = [grangerICE,grangerFSNS]
-dataset = np.array(dataset)
-dataset = dataset.T
-
-ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
-result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
-print result
+## make a color bar
+fig.colorbar(cs, cmap=cmap, norm=norm, boundaries=bounds, ticks=bounds, ax=ax, orientation='horizontal')
+fig.savefig('grangertestmap_may11.png')
+plt.close()
