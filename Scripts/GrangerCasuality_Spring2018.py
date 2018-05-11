@@ -91,32 +91,6 @@ plt.close()
 
 ###########################################################
 
-#confirm stationarity with summary statistics and histograms.
-# Do mean and variance change over time?
-X = ICEFRAC_detrend_DJF[:,27,100]
-split = len(X) / 2
-X1, X2 = X[0:split], X[split:]
-mean1, mean2 = X1.mean(), X2.mean()
-var1, var2 = X1.var(), X2.var()
-print('mean1=%f, mean2=%f' % (mean1, mean2))
-print('variance1=%f, variance2=%f' % (var1, var2))
-plt.hist(X)
-plt.savefig('ICEhist_may7.png')
-plt.close()
-
-X = FSNS_detrend_DJF[:,27,100]
-split = len(X) / 2
-X1, X2 = X[0:split], X[split:]
-mean1, mean2 = X1.mean(), X2.mean()
-var1, var2 = X1.var(), X2.var()
-print('mean1=%f, mean2=%f' % (mean1, mean2))
-print('variance1=%f, variance2=%f' % (var1, var2))
-plt.hist(X)
-plt.savefig('FSNShist_may7.png')
-plt.close()
-
-###########################################################
-
 # smooth data in 25-day chunks (review this later)
 ICEFRAC_smooth_detrend_DJF = scipy.signal.savgol_filter(ICEFRAC_detrend_DJF, \
 window_length=5,polyorder=2,axis=0)
@@ -145,12 +119,96 @@ plt.plot(FSNS_norm_smooth_detrend_DJF[:,27,100], 'r')
 plt.savefig('9yr_normdetrendDJF_may7.png')
 plt.close()
 ###########################################################
+# conduct granger causality test
+
+# function: create VARmodel, input is 2d array of shape (n_obs,n_var)
+
+def VARmodel(dataset):
+    VARmodel = sm.VAR(dataset)
+    VARmodel_fit = VARmodel.fit(ic='aic',trend='c')
+    return VARmodel_fit
+
+# function: conduct causality test, returns binary depending on
+# rejection or failed rejection of null-hyp
+
+def grangertest(model,predictand,predictor):
+    test = model.test_causality(str(predictand),str(predictor),verbose=False)
+    x=0
+    if 'reject' in test.values():
+        x = x+1
+    else:
+        x = x+2
+    return x
+
+ICEFRAC_in = ICEFRAC_norm_smooth_detrend_DJF
+FSNS_in = FSNS_norm_smooth_detrend_DJF
+
+grangergrid = ICEFRAC_in*0
+grangergrid = np.mean(grangergrid,axis=0)
+
+for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
+    y1 = ICEFRAC_in[:,i,j]
+    y2 = FSNS_in[:,i,j]
+    # the followinng process adds small amounts of random noise
+    # this eliminates the singular matrix problem
+    dataset = [y1,y2]+.00000001*np.random.rand(2,810)
+    dataset = np.array(dataset)
+    dataset = dataset.T
+    ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
+    result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
+    grangergrid[i,j] = result[i,j]
+    print i,j,grangergrid.shape
+    if i > 1:
+        break
+    finalgrid = grangergrid
+    return finalgrid
+    print grangergrid.shape
+    print grangergrid[27,100]
+    print grangergrid[:,105]
+    print grangergrid[:,155]
+
+
+
+
+
+i = 0
+j = 0
+for i,j in zip(np.ndindex(ICEFRAC_in.shape[1:]),np.ndindex(FSNS_in.shape[1:])):
+    dataset = [ICEFRAC_in[:,i,j],FSNS_in[:,i,j]]
+    dataset = np.array(dataset)
+    print dataset.shape
+    y1 = ICEFRAC_in[:,i,j]
+    y2 = FSNS_in[:,i,j]
+    print y1.shape
+    dataset = [y1,y2]
+    dataset = np.array(dataset)
+    dataset = dataset.T
+    print dataset.shape
+
+
+    for k,l in np.ndindex(FSNS_in.shape[1:]):
+        y2 = FSNS_in.shape[:,k,l]
+        print y2
+        dataset = [y1,y2]
+        dataset = np.array(dataset)
+        dataset = dataset.T
+        ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
+        result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
+
+
+
+
+    x = a[:,i,j]
+    print x.shape
+
+
 
 grangerICE = ICEFRAC_norm_smooth_detrend_DJF[:,27,100]
 grangerFSNS = FSNS_norm_smooth_detrend_DJF[:,27,100]
-
 dataset = [grangerICE,grangerFSNS]
 dataset = np.array(dataset)
 dataset = dataset.T
-VARmodel = sm.VAR(dataset)
-results = VARresults.VARmodel 
+
+ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
+result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
+print result
