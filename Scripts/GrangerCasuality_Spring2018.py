@@ -10,25 +10,28 @@ from mpl_toolkits.basemap import Basemap, cm, shiftgrid
 import statsmodels.tsa.api as sm
 import scipy
 
+
 ############################################################
 # import variable data (SH lats only) from /LENSoutput directory
 # data begins December of year 1 for easier data management
-# time dimension may be restricted to small size
-# to speed up analysis at first
+# time dimension may be restricted to 10-years
+# to speed up analysis processes at first
 
 ICEFRAC_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.ICEFRAC.04020101-04991231.nc')
 ICEFRAC = ICEFRAC_file.variables['ICEFRAC'][333:3983,0:60,:]
 # convert ICEFRAC from decimal to %
 ICEFRAC = ICEFRAC * 100
 
+
+FSNS_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.FSNS.04020101-04991231.nc')
+FSNS = FSNS_file.variables['FSNS'][333:3983,0:60,:]
+
+# import time data  to aid in seasonal selection
 time = ICEFRAC_file.variables['time'][333:3983]
 # set day 1 to 0 instead of "days since year 256 (see header file)"
 time = time - 42674
 # get total years in dataset from time (to be used later)
-yearcount = len(time)/365
 
-FSNS_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.FSNS.04020101-04991231.nc')
-FSNS = FSNS_file.variables['FSNS'][333:3983,0:60,:]
 
 # import LAT and LON data from one variable for map generation
 lons = ICEFRAC_file.variables['lon'][:]
@@ -56,6 +59,7 @@ def seasonselect(var,newtimelength):
     return x
 
 # isolate DJF for all variables
+yearcount = len(time)/365
 newtimelength = yearcount*90
 ICEFRAC_DJF = seasonselect(ICEFRAC,int(newtimelength))
 FSNS_DJF = seasonselect(FSNS,int(newtimelength))
@@ -165,7 +169,7 @@ for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
     dataset = np.array(dataset)
     dataset = dataset.T
     ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
-    result = grangertest(ICEFRAC_FSNS_VARmodel,'y1','y2')
+    result = grangertest(ICEFRAC_FSNS_VARmodel,'y2','y1')
     grangergrid[i,j] = result
 
 ###########################################################
@@ -174,7 +178,7 @@ for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
 
 fig = plt.figure(figsize=[12,15])  # a new figure window
 ax = fig.add_subplot(1, 1, 1)  # specify (nrows, ncols, axnum)
-ax.set_title('Net incoming SR -> ICEFRAC? (10-yr pi-control)', fontsize=14)
+ax.set_title('ICEFRAC -> Net incoming SR? (10-yr pi-control)', fontsize=14)
 
 map = Basemap(projection='cyl',llcrnrlat=-90,urcrnrlat=-40,\
                 llcrnrlon=-180,urcrnrlon=180,resolution='c', ax=ax)
@@ -193,6 +197,6 @@ bounds=[0,1,2]
 cs = map.contourf(x,y,grangergrid, levels=bounds,shading='interp')
 
 ## make a color bar
-fig.colorbar(cs, cmap=cmap, norm=norm, boundaries=bounds, ticks=bounds, ax=ax, orientation='horizontal')
-fig.savefig('grangertestmap_may11.png')
+fig.colorbar(cs,boundaries=bounds, ax=ax, orientation='horizontal')
+fig.savefig('grangertestmap2_may11.png')
 plt.close()
