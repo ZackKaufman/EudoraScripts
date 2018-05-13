@@ -42,10 +42,22 @@ lats = ICEFRAC_file.variables['lat'][0:60]
 # and check for seasonal trend
 # must export figure to local machine to view, plt.show() invalid on ssh server
 
-plt.plot(ICEFRAC[:,27,100], 'b')
-plt.plot(FSNS[:,27,100], 'r')
+plt.plot(ICEFRAC[:,0,0], 'b')
+plt.plot(FSNS[:,0,0], 'r')
 os.chdir('../draftfigures')
-plt.savefig('10yr_ICE_FSNS_may7.png')
+plt.savefig('1_ICE_FSNS_may12.png')
+plt.close()
+
+plt.plot(ICEFRAC[:,3,205], 'b')
+plt.plot(FSNS[:,3,205], 'r')
+os.chdir('../draftfigures')
+plt.savefig('2_ICE_FSNS_may12.png')
+plt.close()
+
+plt.plot(ICEFRAC[:,3,206], 'b')
+plt.plot(FSNS[:,3,206], 'r')
+os.chdir('../draftfigures')
+plt.savefig('3_ICE_FSNS_may12.png')
 plt.close()
 ###########################################################
 
@@ -98,17 +110,37 @@ plt.close()
 
 ###########################################################
 
-# smooth data in 25-day chunks (review this later)
-ICEFRAC_smooth_detrend_DJF = scipy.signal.savgol_filter(ICEFRAC_detrend_DJF, \
-window_length=5,polyorder=2,axis=0)
-FSNS_smooth_detrend_DJF = scipy.signal.savgol_filter(FSNS_detrend_DJF,\
-window_length=5,polyorder=2,axis=0)
+def movingaverage_5day(values,window=5):
+    weights = np.repeat(1.0,window)/window
+    smas = np.convolve(values,weights,mode='valid')
+    smas_5day = smas[::5]
+    return smas_5day
+
+ICEFRAC_smooth_detrend_DJF = \
+np.apply_along_axis(movingaverage_5day,0,ICEFRAC_detrend_DJF)
+
+FSNS_smooth_detrend_DJF = \
+np.apply_along_axis(movingaverage_5day,0,FSNS_detrend_DJF)
+
 
 
 # plot data
-plt.plot(ICEFRAC_smooth_detrend_DJF[:,27,100], 'b')
-plt.plot(FSNS_smooth_detrend_DJF[:,27,100], 'r')
-plt.savefig('9yrstddetrendsmooth_ICE_FSNS_may7.png')
+plt.plot(ICEFRAC_smooth_detrend_DJF[:,0,0], 'b')
+plt.plot(FSNS_smooth_detrend_DJF[:,0,0], 'r')
+os.chdir('../draftfigures')
+plt.savefig('1_ICE_FSNS_may12.png')
+plt.close()
+
+plt.plot(ICEFRAC_smooth_detrend_DJF[:,3,205], 'b')
+plt.plot(FSNS_smooth_detrend_DJF[:,3,205], 'r')
+os.chdir('../draftfigures')
+plt.savefig('2_ICE_FSNS_may12.png')
+plt.close()
+
+plt.plot(ICEFRAC_smooth_detrend_DJF[:,3,206], 'b')
+plt.plot(FSNS_smooth_detrend_DJF[:,3,206], 'r')
+os.chdir('../draftfigures')
+plt.savefig('3_ICE_FSNS_may12.png')
 plt.close()
 
 ###########################################################
@@ -165,12 +197,17 @@ for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
     y2 = FSNS_in[:,i,j]
     # the following calculation line adds small amounts of random noise
     # this eliminates the singular matrix problem when ICEFRAC is nonexistent
-    dataset = [y1,y2]+.00000001*np.random.rand(2,810)
-    dataset = np.array(dataset)
-    dataset = dataset.T
-    ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
-    result = grangertest(ICEFRAC_FSNS_VARmodel,'y2','y1')
-    grangergrid[i,j] = result
+    #dataset = [y1,y2]+.00000000001*np.random.rand(2,162)
+    dataset = (np.array([y1,y2])).T
+    if np.min(dataset[:,0])==np.max(dataset[:,0]):
+        result = 0
+        grangergrid[i,j] = result
+    else:
+        ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
+        result = grangertest(ICEFRAC_FSNS_VARmodel,'y2','y1')
+        grangergrid[i,j] = result
+
+
 
 ###########################################################
 # plot granger grid on map
