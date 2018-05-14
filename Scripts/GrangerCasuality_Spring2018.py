@@ -16,49 +16,22 @@ import scipy
 # data begins December of year 1 for easier data management
 # time dimension may be restricted to 10-years
 # to speed up analysis processes at first
-
 ICEFRAC_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.ICEFRAC.04020101-04991231.nc')
+FSNS_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.FSNS.04020101-04991231.nc')
 ICEFRAC = ICEFRAC_file.variables['ICEFRAC'][333:3983,0:60,:]
+FSNS = FSNS_file.variables['FSNS'][333:3983,0:60,:]
+
 # convert ICEFRAC from decimal to %
 ICEFRAC = ICEFRAC * 100
-
-
-FSNS_file = dt('b.e11.B1850C5CN.f09_g16.005.cam.h1.FSNS.04020101-04991231.nc')
-FSNS = FSNS_file.variables['FSNS'][333:3983,0:60,:]
 
 # import time data  to aid in seasonal selection
 time = ICEFRAC_file.variables['time'][333:3983]
 # set day 1 to 0 instead of "days since year 256 (see header file)"
 time = time - 42674
-# get total years in dataset from time (to be used later)
-
-
 # import LAT and LON data from one variable for map generation
 lons = ICEFRAC_file.variables['lon'][:]
 lats = ICEFRAC_file.variables['lat'][0:60]
 ###########################################################
-
-# plot three years worth of data at random grid point
-# and check for seasonal trend
-# must export figure to local machine to view, plt.show() invalid on ssh server
-
-plt.plot(ICEFRAC[:,0,0], 'b')
-plt.plot(FSNS[:,0,0], 'r')
-os.chdir('../draftfigures')
-plt.savefig('1_ICE_FSNS_may12.png')
-plt.close()
-
-plt.plot(ICEFRAC[:,3,205], 'b')
-plt.plot(FSNS[:,3,205], 'r')
-os.chdir('../draftfigures')
-plt.savefig('2_ICE_FSNS_may12.png')
-plt.close()
-
-plt.plot(ICEFRAC[:,3,206], 'b')
-plt.plot(FSNS[:,3,206], 'r')
-os.chdir('../draftfigures')
-plt.savefig('3_ICE_FSNS_may12.png')
-plt.close()
 ###########################################################
 
 # VAR(p) model for Granger Causality most effective when analyzing one season
@@ -75,12 +48,6 @@ yearcount = len(time)/365
 newtimelength = yearcount*90
 ICEFRAC_DJF = seasonselect(ICEFRAC,int(newtimelength))
 FSNS_DJF = seasonselect(FSNS,int(newtimelength))
-
-# plot data
-plt.plot(ICEFRAC_DJF[:,27,100], 'b')
-plt.plot(FSNS_DJF[:,27,100], 'r')
-plt.savefig('10yr_ICE_FSNS_DJF_may7.png')
-plt.close()
 
 ###########################################################
 # Data Management: Remove seasonal trends to achieve stationarity
@@ -102,12 +69,6 @@ ICEFRAC_detrend_DJF = np.array(ICEFRAC_detrend_DJF)
 FSNS_detrend_DJF = difference(FSNS_DJF, 90)
 FSNS_detrend_DJF = np.array(FSNS_detrend_DJF)
 
-#Plot detrended data
-plt.plot(ICEFRAC_detrend_DJF[:,27,100], 'b')
-plt.plot(FSNS_detrend_DJF[:,27,100], 'r')
-plt.savefig('9yrstddetrend_ICE_FSNS_may7.png')
-plt.close()
-
 ###########################################################
 
 def movingaverage_5day(values,window=5):
@@ -122,27 +83,6 @@ np.apply_along_axis(movingaverage_5day,0,ICEFRAC_detrend_DJF)
 FSNS_smooth_detrend_DJF = \
 np.apply_along_axis(movingaverage_5day,0,FSNS_detrend_DJF)
 
-
-
-# plot data
-plt.plot(ICEFRAC_smooth_detrend_DJF[:,0,0], 'b')
-plt.plot(FSNS_smooth_detrend_DJF[:,0,0], 'r')
-os.chdir('../draftfigures')
-plt.savefig('1_ICE_FSNS_may12.png')
-plt.close()
-
-plt.plot(ICEFRAC_smooth_detrend_DJF[:,3,205], 'b')
-plt.plot(FSNS_smooth_detrend_DJF[:,3,205], 'r')
-os.chdir('../draftfigures')
-plt.savefig('2_ICE_FSNS_may12.png')
-plt.close()
-
-plt.plot(ICEFRAC_smooth_detrend_DJF[:,3,206], 'b')
-plt.plot(FSNS_smooth_detrend_DJF[:,3,206], 'r')
-os.chdir('../draftfigures')
-plt.savefig('3_ICE_FSNS_may12.png')
-plt.close()
-
 ###########################################################
 # normalize data into anomalies
 # function: subtract functions mean and divide by standard deviation:
@@ -154,15 +94,10 @@ def normalize(data):
 ICEFRAC_norm_smooth_detrend_DJF = normalize(ICEFRAC_smooth_detrend_DJF)
 FSNS_norm_smooth_detrend_DJF = normalize(FSNS_smooth_detrend_DJF)
 
-plt.plot(ICEFRAC_norm_smooth_detrend_DJF[:,27,100], 'b')
-plt.plot(FSNS_norm_smooth_detrend_DJF[:,27,100], 'r')
-plt.savefig('9yr_normdetrendDJF_may7.png')
-plt.close()
 ###########################################################
 # conduct granger causality test, main implementation
 
 # function: create VARmodel, input is 2d array of shape (n_obs,n_var)
-
 def VARmodel(dataset):
     VARmodel = sm.VAR(dataset)
     VARmodel_fit = VARmodel.fit(ic='aic',trend='c')
@@ -170,7 +105,6 @@ def VARmodel(dataset):
 
 # function: conduct causality test for one model, returns binary depending on
 # rejection or failed rejection of null-hypothesis
-
 def grangertest(model,predictand,predictor):
     test = model.test_causality(str(predictand),str(predictor),verbose=False)
     x=0
@@ -180,37 +114,118 @@ def grangertest(model,predictand,predictor):
         x = x+2
     return x
 
-# shorten the names of the input variables. values remain unchanged.
+# shorten the names of the curated input variables. values remain unchanged.
+# ICEFRAC_check is used to exclude data points where ICEFRAC is almost
+# non-existent
 ICEFRAC_in = ICEFRAC_norm_smooth_detrend_DJF
 FSNS_in = FSNS_norm_smooth_detrend_DJF
+ICEFRAC_check = np.max(ICEFRAC_DJF,axis=0)
 
-# initialize 2d lat/lon array with values = 0 and dim_lengths = input variable
-# values will be updated by granger causality tests
+# initialize 2d lat/lon array with dimensions equal to input variable(s) lat/lon
+# float values = 0 to start
+# values are then assigned by the main implementation with VARmodels
+# grangergrid with filled values are then plotted on a basemap
 grangergrid = ICEFRAC_in*0
 grangergrid = np.mean(grangergrid,axis=0)
 
-# create VAR model and conduct granger test at each lat/lon grid point.
-# fill grangergrid with granger results binary. All values should = 1(T) or 2(F)
-# edit 2nd to last line in loop to change vars being considered for causality
+# main implementation analyzes time series arrays for each lat/lon grid point
 for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
     y1 = ICEFRAC_in[:,i,j]
     y2 = FSNS_in[:,i,j]
-    # the following calculation line adds small amounts of random noise
-    # this eliminates the singular matrix problem when ICEFRAC is nonexistent
-    #dataset = [y1,y2]+.00000000001*np.random.rand(2,162)
+    icecheck = ICEFRAC_check[i,j]
     dataset = (np.array([y1,y2])).T
-    if np.min(dataset[:,0])==np.max(dataset[:,0]):
+    # don't fit a VARmodel if ICEFRAC is at or near constant
+    #(i.e. approx. 0 throughout time)
+    if icecheck < 5:
         result = 0
         grangergrid[i,j] = result
     else:
-        ICEFRAC_FSNS_VARmodel = VARmodel(dataset)
-        result = grangertest(ICEFRAC_FSNS_VARmodel,'y2','y1')
-        grangergrid[i,j] = result
+        modelfit = VARmodel(dataset)
+        # if AIC chooses a lag-0 model, avoid grangertest and output the
+        #grid point where it occurs to see what went wrong
+        if modelfit.df_model==1:
+            result = 3
+            grangergrid[i,j] = result
+            print (i,j),result
+        else:
+            result = grangertest(modelfit,'y2','y1')
+            grangergrid[i,j] = result
+
+
 
 
 
 ###########################################################
-# plot granger grid on map
+# plot desired grids on map
+# function, input grid to be plotted, title
+
+def mapplot(data,title,levels=None,fillcontinents=False):
+        lons = ICEFRAC_file.variables['lon'][:]
+        lats = ICEFRAC_file.variables['lat'][0:60]
+        fig = plt.figure(figsize=[12,15])  # a new figure window
+        ax = fig.add_subplot(1, 1, 1)  # specify (nrows, ncols, axnum)
+        ax.set_title(str(title), fontsize=14)
+        map = Basemap(projection='cyl',llcrnrlat=-90,urcrnrlat=-40, \
+        llcrnrlon=-180,urcrnrlon=180,resolution='c', ax=ax)
+        map.drawcoastlines()
+        if fillcontinents is True:
+            map.fillcontinents(color='#ffe2ab')
+        # draw parallels and meridians.
+        map.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
+        map.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
+        # shift data so lons go from -180 to 180 instead of 0 to 360.
+        data,lons = shiftgrid(180.,data,lons,start=False)
+        llons, llats = np.meshgrid(lons, lats)
+        x,y = map(llons,llats)
+        cmap = plt.cm.get_cmap('spectral')
+        #bounds=[-1,0,1,2,3]
+        cs = map.contourf(x,y,data,cmap=cmap,levels=levels,shading='interp')
+        ## make a color bar
+        fig.colorbar\
+        (cs, ax=ax,cmap=cmap, orientation='horizontal')
+        # return lons to their original state
+        lons = ICEFRAC_file.variables['lon'][:]
+        return fig
+
+# make basemap 1
+os.chdir('../draftfigures')
+ICEFRAC_DJF = np.mean(ICEFRAC_DJF,axis=0)
+figure_ICEFRAC = mapplot(ICEFRAC_DJF,'Mean DJF Ice fraction (%)',\
+[.01,.1,1,10,20,30,40,50,60,70,80,90,100])
+figure_ICEFRAC.savefig('mean_Ice_fraction_%_may14.png')
+plt.close()
+# return var to initial state
+ICEFRAC_DJF = seasonselect(ICEFRAC,int(newtimelength))
+
+#make basemap 2
+ICEFRAC_DJF = np.max(ICEFRAC_DJF,axis=0)
+figure_ICEFRAC = mapplot(ICEFRAC_DJF,'Max DJF Ice fraction (%)',\
+[.01,.1,1,10,20,30,40,50,60,70,80,90,100])
+figure_ICEFRAC.savefig('max_Ice_fraction_%_may14.png')
+plt.close()
+# return var to initial state
+ICEFRAC_DJF = seasonselect(ICEFRAC,int(newtimelength))
+
+#basemap 3
+ICEFRAC_detrend_DJF = np.mean(ICEFRAC_detrend_DJF,axis=0)
+figure_ICEFRAC = mapplot(ICEFRAC_detrend_DJF,\
+'Mean detrended DJF Ice fraction (%)')
+figure_ICEFRAC.savefig('meandetrend_Ice_fraction_%_may14.png')
+plt.close()
+# return var to initial state
+ICEFRAC_detrend_DJF = difference(ICEFRAC_DJF, 90)
+ICEFRAC_detrend_DJF = np.array(ICEFRAC_detrend_DJF)
+
+#basemap 4
+figure_granger = mapplot(grangergrid,\
+'Grangerresults_may14#1',levels=[0,1,2,3])
+figure_granger.savefig('granger1_may14.png')
+plt.close()
+# return var to initial state
+grangergrid = ICEFRAC_in*0
+grangergrid = np.mean(grangergrid,axis=0)
+
+
 
 
 fig = plt.figure(figsize=[12,15])  # a new figure window
@@ -221,7 +236,7 @@ map = Basemap(projection='cyl',llcrnrlat=-90,urcrnrlat=-40,\
                 llcrnrlon=-180,urcrnrlon=180,resolution='c', ax=ax)
 
 map.drawcoastlines()
-map.fillcontinents(color='#ffe2ab')
+#map.fillcontinents(color='#ffe2ab')
 # draw parallels and meridians.
 map.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
 map.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
@@ -230,10 +245,17 @@ map.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
 grangergrid,lons = shiftgrid(180.,grangergrid,lons,start=False)
 llons, llats = np.meshgrid(lons, lats)
 x,y = map(llons,llats)
-bounds=[0,1,2]
+bounds=[-1,0,1,2,3]
+
 cs = map.contourf(x,y,grangergrid, levels=bounds,shading='interp')
 
 ## make a color bar
 fig.colorbar(cs,boundaries=bounds, ax=ax, orientation='horizontal')
-fig.savefig('grangertestmap2_may11.png')
+os.chdir('../draftfigures')
+fig.savefig()
 plt.close()
+
+# remake empty grid and lat/lon for next plot
+lons = ICEFRAC_file.variables['lon'][:]
+grangergrid = ICEFRAC_in*0
+grangergrid = np.mean(grangergrid,axis=0)
