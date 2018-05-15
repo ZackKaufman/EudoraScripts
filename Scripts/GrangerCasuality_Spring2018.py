@@ -100,7 +100,7 @@ FSNS_norm_smooth_detrend_DJF = normalize(FSNS_smooth_detrend_DJF)
 # function: create VARmodel, input is 2d array of shape (n_obs,n_var)
 def VARmodel(dataset):
     VARmodel = sm.VAR(dataset)
-    VARmodel_fit = VARmodel.fit(ic='aic',trend='c')
+    VARmodel_fit = VARmodel.fit(ic='bic',trend='c')
     return VARmodel_fit
 
 # function: conduct causality test for one model, returns binary depending on
@@ -114,6 +114,101 @@ def grangertest(model,predictand,predictor):
         x = x+2
     return x
 
+# main implementation functions are as  as follows:
+# function: conduct full-grid test
+# input: predictand and predictor, input as string ('y1','y2'...'yn')
+
+def fullgridgranger(predictand,predictor):
+    # initialize 2d lat/lon array
+    # with dimensions equal to input variable(s) lat/lon
+    # float values = 0 to start
+    predictand = str(predictand)
+    predictor = str(predictor)
+    grangergrid = ICEFRAC_in*0
+    grangergrid = np.mean(grangergrid,axis=0)
+    for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and \
+    np.ndindex(FSNS_in.shape[1:]) and np.ndindex(ICEFRAC_check.shape):
+        x1 = ICEFRAC_in[:,i,j]
+        x2 = FSNS_in[:,i,j]
+        icecheck = ICEFRAC_check[i,j]
+        dataset = (np.array([x1,x2])).T
+        # don't fit a VARmodel if ICEFRAC is at or near constant
+        #(i.e. approx. 0 throughout time)
+        if icecheck < 5:
+            result = 0
+        else:
+            modelfit = VARmodel(dataset)
+            # if AIC chooses a lag-0 model, avoid grangertest and output the
+            #grid point where it occurs to see what went wrong
+            if modelfit.df_model==1:
+                result = 0
+                print (i,j),result
+            else:
+                grangerresult = \
+                grangertest(modelfit,predictand,predictor)
+                grangergrid[i,j]=grangerresult
+    return grangergrid
+
+def maxlagoutput(ingrid):
+    for i,j in np.ndindex(ICEFRAC_in.shape[1:]) \
+    and np.ndindex(FSNS_in.shape[1:])\
+    and np.ndindex(ICEFRAC_check.shape):
+        y1 = ICEFRAC_in[:,i,j]
+        y2 = FSNS_in[:,i,j]
+        icecheck = ICEFRAC_check[i,j]
+        dataset = (np.array([y1,y2])).T
+        # don't fit a VARmodel if ICEFRAC is at or near constant
+        #(i.e. approx. 0 throughout time)
+        if icecheck < 5:
+            result = 0
+        else:
+            modelfit = VARmodel(dataset)
+            # if AIC chooses a lag-0 model, avoid grangertest and output the
+            #grid point where it occurs to see what went wrong
+            if modelfit.df_model==1:
+                result = 0
+            else:
+                lagresults = (modelfit.df_model - 1)
+                ingrid[i,j] = lagresults
+    return ingrid
+
+# outputs coefficients to grid at a given lag if p-value less than .05
+# input predictands as integers (0,1,2,3....n)
+
+def coefficient_output(predictand,lag):
+    coefgrid = ICEFRAC_in*0
+    coefgrid = np.mean(coefgrid,axis=0)
+    for i,j in np.ndindex(ICEFRAC_in.shape[1:])\
+    and np.ndindex(FSNS_in.shape[1:])\
+    and np.ndindex(ICEFRAC_check.shape):
+        y1 = ICEFRAC_in[:,i,j]
+        y2 = FSNS_in[:,i,j]
+        icecheck = ICEFRAC_check[i,j]
+        dataset = (np.array([y1,y2])).T
+        # don't fit a VARmodel if ICEFRAC is at or near constant
+        #(i.e. approx. 0 throughout time)
+        if icecheck < 5:
+            result = 0
+        else:
+            modelfit = VARmodel(dataset)
+            # if AIC chooses a lag-0 model, avoid analysis and output the
+            #grid point where it occurs to see what went wrong
+            if modelfit.df_model==1:
+                result = 0
+            elif modelfit.df_model < lag+1:
+                result = 0
+            else:
+                coef = modelfit.params[int(lag*2),int(predictand)]
+                pvalue = modelfit.pvalues[int(lag*2),int(predictand)]
+                if pvalue <= .05:
+                    coefgrid[i,j] = coef
+    return coefgrid
+
+
+
+
+
+
 # shorten the names of the curated input variables. values remain unchanged.
 # ICEFRAC_check is used to exclude data points where ICEFRAC is almost
 # non-existent
@@ -121,38 +216,17 @@ ICEFRAC_in = ICEFRAC_norm_smooth_detrend_DJF
 FSNS_in = FSNS_norm_smooth_detrend_DJF
 ICEFRAC_check = np.max(ICEFRAC_DJF,axis=0)
 
+grangergrid1 = fullgridgranger('y1','y2')
+grangergrid2 = fullgridgranger('y2','y1')
+coefgrid1 = coefficient_output(0,1)
+coefgrid2 = coefficient_output(0,2)
+
 # initialize 2d lat/lon array with dimensions equal to input variable(s) lat/lon
 # float values = 0 to start
-# values are then assigned by the main implementation with VARmodels
-# grangergrid with filled values are then plotted on a basemap
-grangergrid = ICEFRAC_in*0
-grangergrid = np.mean(grangergrid,axis=0)
-
-# main implementation analyzes time series arrays for each lat/lon grid point
-for i,j in np.ndindex(ICEFRAC_in.shape[1:]) and np.ndindex(FSNS_in.shape[1:]):
-    y1 = ICEFRAC_in[:,i,j]
-    y2 = FSNS_in[:,i,j]
-    icecheck = ICEFRAC_check[i,j]
-    dataset = (np.array([y1,y2])).T
-    # don't fit a VARmodel if ICEFRAC is at or near constant
-    #(i.e. approx. 0 throughout time)
-    if icecheck < 5:
-        result = 0
-        grangergrid[i,j] = result
-    else:
-        modelfit = VARmodel(dataset)
-        # if AIC chooses a lag-0 model, avoid grangertest and output the
-        #grid point where it occurs to see what went wrong
-        if modelfit.df_model==1:
-            result = 3
-            grangergrid[i,j] = result
-            print (i,j),result
-        else:
-            result = grangertest(modelfit,'y2','y1')
-            grangergrid[i,j] = result
-
-
-
+# this is for maxlag
+maxlaggrid = ICEFRAC_in*0
+maxlaggrid = np.mean(maxlaggrid,axis=0)
+maxlaggrid = maxlagoutput(maxlaggrid)
 
 
 ###########################################################
@@ -218,44 +292,50 @@ ICEFRAC_detrend_DJF = np.array(ICEFRAC_detrend_DJF)
 
 #basemap 4
 figure_granger = mapplot(grangergrid,\
-'Grangerresults_may14#1',levels=[0,1,2,3])
+'ICEFRAC -> Net incoming SR (surface), DJF',fillcontinents=True)
 figure_granger.savefig('granger1_may14.png')
 plt.close()
-# return var to initial state
-grangergrid = ICEFRAC_in*0
-grangergrid = np.mean(grangergrid,axis=0)
 
-
-
-
-fig = plt.figure(figsize=[12,15])  # a new figure window
-ax = fig.add_subplot(1, 1, 1)  # specify (nrows, ncols, axnum)
-ax.set_title('ICEFRAC -> Net incoming SR? (10-yr pi-control)', fontsize=14)
-
-map = Basemap(projection='cyl',llcrnrlat=-90,urcrnrlat=-40,\
-                llcrnrlon=-180,urcrnrlon=180,resolution='c', ax=ax)
-
-map.drawcoastlines()
-#map.fillcontinents(color='#ffe2ab')
-# draw parallels and meridians.
-map.drawparallels(np.arange(-90.,120.,30.),labels=[1,0,0,0])
-map.drawmeridians(np.arange(-180.,180.,60.),labels=[0,0,0,1])
-
-# shift data so lons go from -180 to 180 instead of 0 to 360.
-grangergrid,lons = shiftgrid(180.,grangergrid,lons,start=False)
-llons, llats = np.meshgrid(lons, lats)
-x,y = map(llons,llats)
-bounds=[-1,0,1,2,3]
-
-cs = map.contourf(x,y,grangergrid, levels=bounds,shading='interp')
-
-## make a color bar
-fig.colorbar(cs,boundaries=bounds, ax=ax, orientation='horizontal')
-os.chdir('../draftfigures')
-fig.savefig()
+#basemap 5
+figure_granger = mapplot(grangergrid,\
+'Net incoming SR (surface) -> ICEFRAC, DJF',fillcontinents=True)
+figure_granger.savefig('granger2_may14.png')
 plt.close()
 
-# remake empty grid and lat/lon for next plot
-lons = ICEFRAC_file.variables['lon'][:]
-grangergrid = ICEFRAC_in*0
-grangergrid = np.mean(grangergrid,axis=0)
+#basemap 6
+os.chdir('../draftfigures')
+figure_maxlag = mapplot(maxlaggrid,\
+'Model lag-order by gridpoint (lag-1=5 days)',\
+levels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,\
+26,27,28],fillcontinents=True)
+figure_maxlag.savefig('maxlag1_may14.png')
+plt.close()
+
+#basemap 7
+os.chdir('../draftfigures')
+figure_maxlag = mapplot(maxlaggrid,\
+'Model lag-order by gridpoint (5-day units),selection criteria = bic',\
+levels=[1,2,3,4,5,6,7,8,9,10,11,12],fillcontinents=True)
+figure_maxlag.savefig('maxlagbic_may14.png')
+plt.close()
+
+#basemap 8
+figure_granger = mapplot(grangergrid1,\
+'Net incoming SR (surface) -> ICEFRAC, DJF (using bic)',fillcontinents=True)
+figure_granger.savefig('granger2_bic_may14.png')
+plt.close()
+
+#basemap 9
+figure_granger = mapplot(grangergrid2,\
+'ICEFRAC -> Net incoming SR (surface), DJF (using bic)',fillcontinents=True)
+figure_granger.savefig('granger1_bic_may14.png')
+plt.close()
+
+#basemap 10
+os.chdir('../draftfigures')
+figure_granger = mapplot(coefgrid1,\
+'Net incoming SR (surface) -> ICEFRAC, DJF (lag-1 coefficients, p=.05)',\
+levels=[-1,-.9,-.8,-.7,-.6,-.5,-.4,-.3,-.2,-.1,-.05,-.01,0,.01,.05,.1,.2,.3],\
+fillcontinents=True)
+figure_granger.savefig('coef1_bic_may14.png')
+plt.close()
